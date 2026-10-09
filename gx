@@ -1,188 +1,160 @@
---// 🔥 AutoFarm Slayer + Tanjiro + Zoom Top-Down + TP Quest 🔁 (Auto Haki Every 1s + UI Fixed + Zoom & Camera Unlock) 🔥
---// by กัน
+--// Fence Auto Collector
+--// Tween + Teleport + Nearest Fence + Loop + E
+--// ใช้ใน LocalScript / executor ที่รองรับ Roblox Lua
 
---===[ Settings ]===--
-local QUEST_CFRAME = CFrame.new(-460.4409484863281, 10.964144706726074, 487.0525207519531) -- จุดเควส
-local TANJIRO_CFRAME = CFrame.new(-533.615845, 11.164134, 535.633545) -- จุดบอส Tanjiro
-local ISLAND = "Forge Isle"
-
---===[ Services ]===--
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Workspace = game:GetService("Workspace")
+
 local player = Players.LocalPlayer
-local Remotes = ReplicatedStorage:WaitForChild("Remotes"):WaitForChild("Serverside")
-local camera = workspace.CurrentCamera
+local playerGui = player:WaitForChild("PlayerGui")
 
---===[ Global States ]===--
-getgenv().AutoZoom = false
-getgenv().AutoSlayer = false
-getgenv().AutoTanjiro = false
-getgenv().TPQuest = false
+local old = playerGui:FindFirstChild("FenceCollectorUI")
+if old then old:Destroy() end
 
---===[ UI Setup ]===--
-local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-gui.Name = "FarmUI"
+local running = false
+local mode = "Tween"
+local speed = 500
+local holdE = false
+local visited = {}
+local currentTween
+
+--// UI
+local gui = Instance.new("ScreenGui")
+gui.Name = "FenceCollectorUI"
 gui.ResetOnSpawn = false
+gui.Parent = playerGui
 
-local frame = Instance.new("Frame", gui)
-frame.Size = UDim2.new(0, 220, 0, 200)
-frame.Position = UDim2.new(0.8, 0, 0.55, 0)
-frame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-frame.BorderSizePixel = 0
-frame.BackgroundTransparency = 0.1
-frame.Active = true
-frame.Draggable = true
+local main = Instance.new("Frame")
+main.Size = UDim2.fromOffset(290, 245)
+main.Position = UDim2.new(0.5, -145, 0.35, 0)
+main.BackgroundColor3 = Color3.fromRGB(24, 26, 35)
+main.BorderSizePixel = 0
+main.Parent = gui
+Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 
-local function makeButton(name, order)
-	local btn = Instance.new("TextButton", frame)
-	btn.Size = UDim2.new(1, -20, 0, 40)
-	btn.Position = UDim2.new(0, 10, 0, (order - 1) * 45 + 10)
-	btn.Text = name
-	btn.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
-	btn.TextColor3 = Color3.new(1, 1, 1)
-	btn.Font = Enum.Font.GothamBold
-	btn.TextSize = 16
-	btn.AutoButtonColor = true
-	btn.BorderSizePixel = 0
-	return btn
+local stroke = Instance.new("UIStroke")
+stroke.Color = Color3.fromRGB(70, 75, 95)
+stroke.Parent = main
+
+local function makeButton(text, pos, size, parent, color)
+    local b = Instance.new("TextButton")
+    b.Size = size
+    b.Position = pos
+    b.BackgroundColor3 = color or Color3.fromRGB(48, 52, 68)
+    b.Text = text
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Font = Enum.Font.GothamBold
+    b.TextSize = 12
+    b.BorderSizePixel = 0
+    b.Parent = parent
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
+    return b
 end
 
-local zoomBtn = makeButton("Auto Zoom ❌", 1)
-local slayerBtn = makeButton("Auto Slayer ❌", 2)
-local tanjiroBtn = makeButton("Auto Tanjiro ❌", 3)
-local tpBtn = makeButton("TP Quest 🔁 ❌", 4)
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -75, 0, 35)
+title.Position = UDim2.fromOffset(12, 0)
+title.BackgroundTransparency = 1
+title.Text = "FENCE COLLECTOR"
+title.TextColor3 = Color3.new(1, 1, 1)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = main
 
---===[ HoldDuration 0 ]===--
-for _, obj in pairs(workspace:GetDescendants()) do
-	if obj:IsA("ProximityPrompt") then
-		obj.HoldDuration = 0
-	end
+local hide = makeButton("ซ่อน", UDim2.new(1, -60, 0, 5),
+    UDim2.fromOffset(50, 25), main, Color3.fromRGB(75, 80, 100))
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, -20, 0, 30)
+status.Position = UDim2.fromOffset(10, 38)
+status.BackgroundTransparency = 1
+status.Text = "สถานะ: หยุด"
+status.TextColor3 = Color3.fromRGB(255, 210, 90)
+status.Font = Enum.Font.Gotham
+status.TextSize = 12
+status.Parent = main
+
+local tweenButton = makeButton("โหมด: TWEEN",
+    UDim2.fromOffset(10, 72), UDim2.new(0.5, -15, 0, 35),
+    main, Color3.fromRGB(60, 80, 150))
+
+local startButton = makeButton("เริ่ม", UDim2.new(0.5, 5, 0, 72),
+    UDim2.new(0.5, -15, 0, 35), main, Color3.fromRGB(35, 145, 85))
+
+local speedButton = makeButton("ความเร็ว Tween: 500",
+    UDim2.fromOffset(10, 115), UDim2.new(1, -20, 0, 32), main)
+
+local eButton = makeButton("กด E: เปิด",
+    UDim2.fromOffset(10, 155), UDim2.new(1, -20, 0, 32), main,
+    Color3.fromRGB(90, 80, 130))
+
+local info = Instance.new("TextLabel")
+info.Size = UDim2.new(1, -20, 0, 28)
+info.Position = UDim2.fromOffset(10, 195)
+info.BackgroundTransparency = 1
+info.Text = "Fence: รอเริ่ม"
+info.TextColor3 = Color3.fromRGB(185, 190, 205)
+info.Font = Enum.Font.Gotham
+info.TextSize = 11
+info.Parent = main
+
+local openButton = makeButton("เปิด Fence UI",
+    UDim2.new(0, 15, 0.5, 0), UDim2.fromOffset(115, 35),
+    gui, Color3.fromRGB(40, 45, 65))
+openButton.Visible = false
+
+hide.MouseButton1Click:Connect(function()
+    main.Visible = false
+    openButton.Visible = true
+end)
+
+openButton.MouseButton1Click:Connect(function()
+    main.Visible = true
+    openButton.Visible = false
+end)
+
+tweenButton.MouseButton1Click:Connect(function()
+    mode = mode == "Tween" and "Teleport" or "Tween"
+    tweenButton.Text = "โหมด: " .. string.upper(mode)
+end)
+
+speedButton.MouseButton1Click:Connect(function()
+    speed = speed == 500 and 800 or (speed == 800 and 1200 or 500)
+    speedButton.Text = "ความเร็ว Tween: " .. speed
+end)
+
+eButton.MouseButton1Click:Connect(function()
+    holdE = not holdE
+    eButton.Text = "กด E: " .. (holdE and "เปิด" or "ปิด")
+end)
+
+--// Fence helpers
+local function getRoot()
+    local char = player.Character
+    return char and char:FindFirstChild("HumanoidRootPart")
 end
 
---===[ 🌀 Auto Haki (Every 1 Second) ]===--
-task.spawn(function()
-	while task.wait(1) do
-		pcall(function()
-			Remotes:FireServer("Server", "Misc", "Haki", 1)
-		end)
-	end
-end)
+local function getFences()
+    local event = Workspace:FindFirstChild("FateEvent")
+    local map = event and event:FindFirstChild("Map")
+    local folder = map and map:FindFirstChild("Fences")
+    if not folder then return {} end
 
---===[ Helpers ]===--
-local function waitForCharacter()
-	local char, hrp, humanoid
-	repeat
-		char = player.Character or player.CharacterAdded:Wait()
-		hrp = char:FindFirstChild("HumanoidRootPart")
-		humanoid = char:FindFirstChild("Humanoid")
-		task.wait(0.1)
-	until hrp and humanoid and humanoid.Health > 0
-	return char, hrp, humanoid
-end
+    local list = {}
+    for _, fence in ipairs(folder:GetChildren()) do
+        if fence.Name:match("^Fence%d+$") then
+            local prompt = fence:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local part = fence:IsA("BasePart") and fence
+                or fence:FindFirstChildWhichIsA("BasePart", true)
 
-local function findEnemy(name)
-	local path = workspace.Main.Characters[ISLAND]
-	for _,v in pairs(path:GetDescendants()) do
-		if v.Name == name and v:FindFirstChild("HumanoidRootPart") and v:FindFirstChild("Humanoid") then
-			return v
-		end
-	end
-	return nil
-end
-
---===[ Attack Function ]===--
-local function attack(target)
-	pcall(function()
-		if target and target:FindFirstChild("HumanoidRootPart") then
-			local char, hrp = waitForCharacter()
-			local hrpTarget = target.HumanoidRootPart
-			task.wait(0.15)
-			hrp.CFrame = hrpTarget.CFrame * CFrame.new(0, 0, 5)
-			Remotes:FireServer("Server","Sword","M1s","Dual Dagger",1)
-			task.wait(0.15)
-			for i = 1, 4 do
-				Remotes:FireServer("Server","Sword","Skill"..i,"Dual Dagger", hrpTarget.Position)
-				task.wait(0.15)
-			end
-		end
-	end)
-end
-
---===[ Teleport Functions ]===--
-local function teleportToQuest()
-	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-		player.Character.HumanoidRootPart.CFrame = QUEST_CFRAME
-	end
-end
-
-local function teleportToTanjiro()
-	if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-		player.Character.HumanoidRootPart.CFrame = TANJIRO_CFRAME
-	end
-end
-
---===[ Auto Loops ]===--
-task.spawn(function()
-	while true do
-		task.wait(0.5)
-		if getgenv().AutoSlayer then
-			local mob = findEnemy("Slayer's Trainee")
-			if mob then attack(mob) end
-		end
-		if getgenv().AutoTanjiro then
-			local boss = findEnemy("Tanjiro")
-			if boss then
-				attack(boss)
-			else
-				teleportToTanjiro()
-			end
-		end
-		if getgenv().TPQuest then
-			teleportToQuest()
-		end
-	end
-end)
-
---===[ Auto Zoom Fixed + Camera Unlock ]===--
-RunService.RenderStepped:Connect(function()
-	local char = player.Character
-	if char and char:FindFirstChild("HumanoidRootPart") and char:FindFirstChild("Humanoid") and char:FindFirstChild("Head") then
-		if getgenv().AutoZoom then
-			camera.CameraType = Enum.CameraType.Scriptable
-			local camPos = char.HumanoidRootPart.Position + Vector3.new(0,50,0)
-			camera.CFrame = CFrame.new(camPos, char.Head.Position)
-		else
-			camera.CameraType = Enum.CameraType.Custom
-			camera.CameraSubject = char.Humanoid
-		end
-	end
-end)
-
---===[ Buttons Connect ]===--
-zoomBtn.MouseButton1Click:Connect(function()
-	getgenv().AutoZoom = not getgenv().AutoZoom
-	zoomBtn.Text = "Auto Zoom " .. (getgenv().AutoZoom and "✅" or "❌")
-	zoomBtn.BackgroundColor3 = getgenv().AutoZoom and Color3.fromRGB(0,150,0) or Color3.fromRGB(70,70,70)
-end)
-
-slayerBtn.MouseButton1Click:Connect(function()
-	getgenv().AutoSlayer = not getgenv().AutoSlayer
-	slayerBtn.Text = "Auto Slayer " .. (getgenv().AutoSlayer and "✅" or "❌")
-	slayerBtn.BackgroundColor3 = getgenv().AutoSlayer and Color3.fromRGB(0,150,0) or Color3.fromRGB(70,70,70)
-end)
-
-tanjiroBtn.MouseButton1Click:Connect(function()
-	getgenv().AutoTanjiro = not getgenv().AutoTanjiro
-	tanjiroBtn.Text = "Auto Tanjiro " .. (getgenv().AutoTanjiro and "✅" or "❌")
-	tanjiroBtn.BackgroundColor3 = getgenv().AutoTanjiro and Color3.fromRGB(0,150,0) or Color3.fromRGB(70,70,70)
-	if getgenv().AutoTanjiro then
-		teleportToTanjiro()
-	end
-end)
-
-tpBtn.MouseButton1Click:Connect(function()
-	getgenv().TPQuest = not getgenv().TPQuest
-	tpBtn.Text = "TP Quest 🔁 " .. (getgenv().TPQuest and "✅" or "❌")
-	tpBtn.BackgroundColor3 = getgenv().TPQuest and Color3.fromRGB(0,150,0) or Color3.fromRGB(70,70,70)
-end)
+            if part then
+                if prompt then
+                    pcall(function()
+                        prompt.HoldDuration = 0
+                    end)
+                end
+                table
