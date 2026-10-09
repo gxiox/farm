@@ -157,4 +157,170 @@ local function getFences()
                         prompt.HoldDuration = 0
                     end)
                 end
-                table
+                table.insert(list, {model = fence, part = part, prompt = prompt})
+            end
+        end
+    end
+    return list
+end
+
+local function nearestFence(list, root)
+    local best, bestDistance
+    for _, item in ipairs(list) do
+        if not visited[item.model] then
+            local distance = (root.Position - item.part.Position).Magnitude
+            if not bestDistance or distance < bestDistance then
+                best = item
+                bestDistance = distance
+            end
+        end
+    end
+    return best
+end
+
+local function pressE()
+    pcall(function()
+        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+        task.wait(0.08)
+        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+    end)
+end
+
+local function moveTo(item)
+    local root = getRoot()
+    if not root or not item or not item.part.Parent then return false end
+
+    if mode == "Teleport" then
+        root.CFrame = item.part.CFrame + Vector3.new(0, 3, 0)
+        task.wait(0.1)
+        return true
+    end
+
+    local distance = (root.Position - item.part.Position).Magnitude
+    local duration = math.max(distance / speed, 0.03)
+
+    currentTween = TweenService:Create(
+        root,
+        TweenInfo.new(duration, Enum.EasingStyle.Linear),
+        {CFrame = item.part.CFrame + Vector3.new(0, 3, 0)}
+    )
+    currentTween:Play()
+
+    while currentTween and currentTween.PlaybackState == Enum.PlaybackState.Playing do
+        if not running then
+            currentTween:Cancel()
+            return false
+        end
+        task.wait(0.03)
+    end
+
+    return running
+end
+
+--// Main loop
+startButton.MouseButton1Click:Connect(function()
+    running = not running
+
+    if running then
+        startButton.Text = "หยุด"
+        startButton.BackgroundColor3 = Color3.fromRGB(180, 60, 65)
+        status.Text = "สถานะ: กำลังทำงาน"
+
+        task.spawn(function()
+            while running do
+                local root = getRoot()
+                local fences = getFences()
+
+                if not root then
+                    status.Text = "รอตัวละคร..."
+                    task.wait(0.5)
+                    continue
+                end
+
+                if #fences == 0 then
+                    status.Text = "ไม่พบ Fence"
+                    task.wait(1)
+                    continue
+                end
+
+                local remaining = 0
+                for _, item in ipairs(fences) do
+                    if not visited[item.model] then
+                        remaining += 1
+                    end
+                end
+
+                -- ครบทุก Fence แล้วเริ่มรอบใหม่
+                if remaining == 0 then
+                    visited = {}
+                    status.Text = "ครบแล้ว — เริ่มรอบใหม่"
+                    task.wait(0.2)
+                    continue
+                end
+
+                local item = nearestFence(fences, root)
+                if item then
+                    status.Text = "สถานะ: กำลังเก็บ"
+                    info.Text = "Fence: " .. item.model.Name
+
+                    if moveTo(item) and running then
+                        if holdE then
+                            pressE()
+                        end
+                        visited[item.model] = true
+                        task.wait(0.05)
+                    end
+                end
+            end
+
+            if currentTween then
+                currentTween:Cancel()
+                currentTween = nil
+            end
+            status.Text = "สถานะ: หยุด"
+            startButton.Text = "เริ่ม"
+            startButton.BackgroundColor3 = Color3.fromRGB(35, 145, 85)
+        end)
+    else
+        if currentTween then
+            currentTween:Cancel()
+            currentTween = nil
+        end
+        status.Text = "สถานะ: กำลังหยุด..."
+        startButton.Text = "เริ่ม"
+    end
+end)
+
+--// Drag UI
+local dragging, dragStart, startPosition
+
+title.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPosition = main.Position
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (
+        input.UserInputType == Enum.UserInputType.MouseMovement
+        or input.UserInputType == Enum.UserInputType.Touch
+    ) then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(
+            startPosition.X.Scale,
+            startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale,
+            startPosition.Y.Offset + delta.Y
+        )
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1
+        or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
