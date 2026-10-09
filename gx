@@ -1,6 +1,6 @@
+
 --// Fence Auto Collector
---// Tween + Teleport + Nearest Fence + Loop + E
---// ใช้ใน LocalScript / executor ที่รองรับ Roblox Lua
+--// Tween + Teleport + Nearest Fence + Loop + E (1 second)
 
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -17,7 +17,7 @@ if old then old:Destroy() end
 local running = false
 local mode = "Tween"
 local speed = 500
-local holdE = false
+local holdE = true
 local visited = {}
 local currentTween
 
@@ -32,7 +32,9 @@ main.Size = UDim2.fromOffset(290, 245)
 main.Position = UDim2.new(0.5, -145, 0.35, 0)
 main.BackgroundColor3 = Color3.fromRGB(24, 26, 35)
 main.BorderSizePixel = 0
+main.Active = true
 main.Parent = gui
+
 Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
 
 local stroke = Instance.new("UIStroke")
@@ -50,6 +52,7 @@ local function makeButton(text, pos, size, parent, color)
     b.TextSize = 12
     b.BorderSizePixel = 0
     b.Parent = parent
+
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 7)
     return b
 end
@@ -65,8 +68,13 @@ title.TextSize = 14
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = main
 
-local hide = makeButton("ซ่อน", UDim2.new(1, -60, 0, 5),
-    UDim2.fromOffset(50, 25), main, Color3.fromRGB(75, 80, 100))
+local hide = makeButton(
+    "ซ่อน",
+    UDim2.new(1, -60, 0, 5),
+    UDim2.fromOffset(50, 25),
+    main,
+    Color3.fromRGB(75, 80, 100)
+)
 
 local status = Instance.new("TextLabel")
 status.Size = UDim2.new(1, -20, 0, 30)
@@ -78,19 +86,36 @@ status.Font = Enum.Font.Gotham
 status.TextSize = 12
 status.Parent = main
 
-local tweenButton = makeButton("โหมด: TWEEN",
-    UDim2.fromOffset(10, 72), UDim2.new(0.5, -15, 0, 35),
-    main, Color3.fromRGB(60, 80, 150))
+local tweenButton = makeButton(
+    "โหมด: TWEEN",
+    UDim2.fromOffset(10, 72),
+    UDim2.new(0.5, -15, 0, 35),
+    main,
+    Color3.fromRGB(60, 80, 150)
+)
 
-local startButton = makeButton("เริ่ม", UDim2.new(0.5, 5, 0, 72),
-    UDim2.new(0.5, -15, 0, 35), main, Color3.fromRGB(35, 145, 85))
+local startButton = makeButton(
+    "เริ่ม",
+    UDim2.new(0.5, 5, 0, 72),
+    UDim2.new(0.5, -15, 0, 35),
+    main,
+    Color3.fromRGB(35, 145, 85)
+)
 
-local speedButton = makeButton("ความเร็ว Tween: 500",
-    UDim2.fromOffset(10, 115), UDim2.new(1, -20, 0, 32), main)
+local speedButton = makeButton(
+    "ความเร็ว Tween: 500",
+    UDim2.fromOffset(10, 115),
+    UDim2.new(1, -20, 0, 32),
+    main
+)
 
-local eButton = makeButton("กด E: เปิด",
-    UDim2.fromOffset(10, 155), UDim2.new(1, -20, 0, 32), main,
-    Color3.fromRGB(90, 80, 130))
+local eButton = makeButton(
+    "กด E: เปิด",
+    UDim2.fromOffset(10, 155),
+    UDim2.new(1, -20, 0, 32),
+    main,
+    Color3.fromRGB(90, 80, 130)
+)
 
 local info = Instance.new("TextLabel")
 info.Size = UDim2.new(1, -20, 0, 28)
@@ -102,9 +127,13 @@ info.Font = Enum.Font.Gotham
 info.TextSize = 11
 info.Parent = main
 
-local openButton = makeButton("เปิด Fence UI",
-    UDim2.new(0, 15, 0.5, 0), UDim2.fromOffset(115, 35),
-    gui, Color3.fromRGB(40, 45, 65))
+local openButton = makeButton(
+    "เปิด Fence UI",
+    UDim2.new(0, 15, 0.5, 0),
+    UDim2.fromOffset(115, 35),
+    gui,
+    Color3.fromRGB(40, 45, 65)
+)
 openButton.Visible = false
 
 hide.MouseButton1Click:Connect(function()
@@ -117,37 +146,54 @@ openButton.MouseButton1Click:Connect(function()
     openButton.Visible = false
 end)
 
+--// เปลี่ยนโหมด
 tweenButton.MouseButton1Click:Connect(function()
-    mode = mode == "Tween" and "Teleport" or "Tween"
+    if mode == "Tween" then
+        mode = "Teleport"
+    else
+        mode = "Tween"
+    end
+
     tweenButton.Text = "โหมด: " .. string.upper(mode)
 end)
 
+--// ปรับความเร็ว Tween
 speedButton.MouseButton1Click:Connect(function()
     speed = speed == 500 and 800 or (speed == 800 and 1200 or 500)
     speedButton.Text = "ความเร็ว Tween: " .. speed
 end)
 
+--// เปิด/ปิดการกด E
 eButton.MouseButton1Click:Connect(function()
     holdE = not holdE
     eButton.Text = "กด E: " .. (holdE and "เปิด" or "ปิด")
 end)
 
---// Fence helpers
+--// หา HumanoidRootPart
 local function getRoot()
     local char = player.Character
     return char and char:FindFirstChild("HumanoidRootPart")
 end
 
+--// ค้นหา Fence
 local function getFences()
     local event = Workspace:FindFirstChild("FateEvent")
     local map = event and event:FindFirstChild("Map")
     local folder = map and map:FindFirstChild("Fences")
-    if not folder then return {} end
+
+    if not folder then
+        return {}
+    end
 
     local list = {}
+
     for _, fence in ipairs(folder:GetChildren()) do
         if fence.Name:match("^Fence%d+$") then
-            local prompt = fence:FindFirstChildWhichIsA("ProximityPrompt", true)
+            local prompt = fence:FindFirstChildWhichIsA(
+                "ProximityPrompt",
+                true
+            )
+
             local part = fence:IsA("BasePart") and fence
                 or fence:FindFirstChildWhichIsA("BasePart", true)
 
@@ -157,146 +203,213 @@ local function getFences()
                         prompt.HoldDuration = 0
                     end)
                 end
-                table.insert(list, {model = fence, part = part, prompt = prompt})
+
+                table.insert(list, {
+                    model = fence,
+                    part = part,
+                    prompt = prompt
+                })
             end
         end
     end
+
     return list
 end
 
+--// เลือก Fence ที่ใกล้ที่สุด
 local function nearestFence(list, root)
-    local best, bestDistance
+    local best
+    local bestDistance = math.huge
+
     for _, item in ipairs(list) do
-        if not visited[item.model] then
-            local distance = (root.Position - item.part.Position).Magnitude
-            if not bestDistance or distance < bestDistance then
+        if not visited[item.model] and item.part.Parent then
+            local distance = (
+                root.Position - item.part.Position
+            ).Magnitude
+
+            if distance < bestDistance then
                 best = item
                 bestDistance = distance
             end
         end
     end
+
     return best
 end
 
+--// กด E เป็นจังหวะประมาณ 1 วินาที
 local function pressE()
+    local endTime = os.clock() + 1
+
+    while running and holdE and os.clock() < endTime do
+        pcall(function()
+            VirtualInputManager:SendKeyEvent(
+                true,
+                Enum.KeyCode.E,
+                false,
+                game
+            )
+
+            task.wait(0.05)
+
+            VirtualInputManager:SendKeyEvent(
+                false,
+                Enum.KeyCode.E,
+                false,
+                game
+            )
+        end)
+
+        task.wait(0.1)
+    end
+
+    -- ป้องกันปุ่มค้างเมื่อหยุดระหว่างกด
     pcall(function()
-        VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-        task.wait(0.08)
-        VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+        VirtualInputManager:SendKeyEvent(
+            false,
+            Enum.KeyCode.E,
+            false,
+            game
+        )
     end)
 end
 
+--// เคลื่อนที่ไป Fence
 local function moveTo(item)
     local root = getRoot()
-    if not root or not item or not item.part.Parent then return false end
 
-    if mode == "Teleport" then
-        root.CFrame = item.part.CFrame + Vector3.new(0, 3, 0)
-        task.wait(0.1)
-        return true
+    if not root or not item or not item.part.Parent then
+        return false
     end
 
-    local distance = (root.Position - item.part.Position).Magnitude
+    local destination = item.part.CFrame + Vector3.new(0, 3, 0)
+
+    if mode == "Teleport" then
+        root.CFrame = destination
+        task.wait(0.1)
+        return running
+    end
+
+    local distance = (root.Position - destination.Position).Magnitude
     local duration = math.max(distance / speed, 0.03)
 
     currentTween = TweenService:Create(
         root,
         TweenInfo.new(duration, Enum.EasingStyle.Linear),
-        {CFrame = item.part.CFrame + Vector3.new(0, 3, 0)}
+        {CFrame = destination}
     )
-    currentTween:Play()
 
-    while currentTween and currentTween.PlaybackState == Enum.PlaybackState.Playing do
-        if not running then
-            currentTween:Cancel()
-            return false
-        end
-        task.wait(0.03)
+    local thisTween = currentTween
+    thisTween:Play()
+
+    local state = thisTween.Completed:Wait()
+
+    if currentTween == thisTween then
+        currentTween = nil
     end
 
-    return running
+    if not running or state ~= Enum.PlaybackState.Completed then
+        return false
+    end
+
+    return true
 end
 
---// Main loop
+--// START / STOP
 startButton.MouseButton1Click:Connect(function()
-    running = not running
-
     if running then
-        startButton.Text = "หยุด"
-        startButton.BackgroundColor3 = Color3.fromRGB(180, 60, 65)
-        status.Text = "สถานะ: กำลังทำงาน"
+        running = false
 
-        task.spawn(function()
-            while running do
-                local root = getRoot()
-                local fences = getFences()
-
-                if not root then
-                    status.Text = "รอตัวละคร..."
-                    task.wait(0.5)
-                    continue
-                end
-
-                if #fences == 0 then
-                    status.Text = "ไม่พบ Fence"
-                    task.wait(1)
-                    continue
-                end
-
-                local remaining = 0
-                for _, item in ipairs(fences) do
-                    if not visited[item.model] then
-                        remaining += 1
-                    end
-                end
-
-                -- ครบทุก Fence แล้วเริ่มรอบใหม่
-                if remaining == 0 then
-                    visited = {}
-                    status.Text = "ครบแล้ว — เริ่มรอบใหม่"
-                    task.wait(0.2)
-                    continue
-                end
-
-                local item = nearestFence(fences, root)
-                if item then
-                    status.Text = "สถานะ: กำลังเก็บ"
-                    info.Text = "Fence: " .. item.model.Name
-
-                    if moveTo(item) and running then
-                        if holdE then
-                            pressE()
-                        end
-                        visited[item.model] = true
-                        task.wait(0.05)
-                    end
-                end
-            end
-
-            if currentTween then
-                currentTween:Cancel()
-                currentTween = nil
-            end
-            status.Text = "สถานะ: หยุด"
-            startButton.Text = "เริ่ม"
-            startButton.BackgroundColor3 = Color3.fromRGB(35, 145, 85)
-        end)
-    else
         if currentTween then
             currentTween:Cancel()
             currentTween = nil
         end
+
         status.Text = "สถานะ: กำลังหยุด..."
         startButton.Text = "เริ่ม"
+        startButton.BackgroundColor3 = Color3.fromRGB(35, 145, 85)
+        return
     end
+
+    running = true
+    visited = {}
+
+    startButton.Text = "หยุด"
+    startButton.BackgroundColor3 = Color3.fromRGB(180, 60, 65)
+    status.Text = "สถานะ: กำลังทำงาน"
+
+    task.spawn(function()
+        while running do
+            local root = getRoot()
+            local fences = getFences()
+
+            if not root then
+                status.Text = "รอตัวละคร..."
+                task.wait(0.5)
+                continue
+            end
+
+            if #fences == 0 then
+                status.Text = "ไม่พบ Fence"
+                task.wait(1)
+                continue
+            end
+
+            local remaining = 0
+
+            for _, item in ipairs(fences) do
+                if not visited[item.model] then
+                    remaining += 1
+                end
+            end
+
+            -- ครบทุก Fence แล้วเริ่มรอบใหม่
+            if remaining == 0 then
+                table.clear(visited)
+                status.Text = "ครบแล้ว — เริ่มรอบใหม่"
+                task.wait(0.2)
+                continue
+            end
+
+            local item = nearestFence(fences, root)
+
+            if item then
+                status.Text = "สถานะ: กำลังเก็บ"
+                info.Text = "Fence: " .. item.model.Name
+
+                if moveTo(item) and running then
+                    if holdE then
+                        pressE()
+                    end
+
+                    visited[item.model] = true
+                    task.wait(0.05)
+                end
+            else
+                task.wait(0.1)
+            end
+        end
+
+        if currentTween then
+            currentTween:Cancel()
+            currentTween = nil
+        end
+
+        status.Text = "สถานะ: หยุด"
+        startButton.Text = "เริ่ม"
+        startButton.BackgroundColor3 = Color3.fromRGB(35, 145, 85)
+    end)
 end)
 
---// Drag UI
-local dragging, dragStart, startPosition
+--// ลาก UI ด้วยเมาส์หรือสัมผัส
+local dragging = false
+local dragStart
+local startPosition
 
 title.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1
         or input.UserInputType == Enum.UserInputType.Touch then
+
         dragging = true
         dragStart = input.Position
         startPosition = main.Position
@@ -309,6 +422,7 @@ UserInputService.InputChanged:Connect(function(input)
         or input.UserInputType == Enum.UserInputType.Touch
     ) then
         local delta = input.Position - dragStart
+
         main.Position = UDim2.new(
             startPosition.X.Scale,
             startPosition.X.Offset + delta.X,
